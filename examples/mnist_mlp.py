@@ -11,11 +11,13 @@ import keras
 from keras.datasets import mnist
 from keras.models import Sequential
 from keras.layers import Dense, Dropout
-from keras.optimizers import RMSprop
+from keras.optimizers import RMSprop, Nadam
+from keras.constraints import NonNeg
 
 batch_size = 128
 num_classes = 10
 epochs = 20
+
 
 # the data, split between train and test sets
 (x_train, y_train), (x_test, y_test) = mnist.load_data()
@@ -34,15 +36,15 @@ y_train = keras.utils.to_categorical(y_train, num_classes)
 y_test = keras.utils.to_categorical(y_test, num_classes)
 
 model = Sequential()
-model.add(Dense(512, activation='relu', input_shape=(784,)))
-model.add(Dropout(0.2))
-model.add(Dense(512, activation='relu'))
-model.add(Dropout(0.2))
-model.add(Dense(num_classes, activation='softmax'))
+model.add(Dense(150, activation='softmax', input_shape=(784,), kernel_constraint=NonNeg()))
+# model.add(Dropout(0.2))
+# model.add(Dense(512, activation='relu'))
+# model.add(Dropout(0.2))
+model.add(Dense(num_classes, activation='softmax', kernel_constraint=NonNeg()))
 
 model.summary()
 
-model.compile(loss='categorical_crossentropy',
+model.compile(loss='cross_entropy',
               optimizer=RMSprop(),
               metrics=['accuracy'])
 
