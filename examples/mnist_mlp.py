@@ -54,7 +54,7 @@ else:
 
 model.summary()
 
-model.compile(loss='cross_entropy',
+model.compile(loss='categorical_crossentropy',
               optimizer=RMSprop(),
               metrics=['accuracy'])
 

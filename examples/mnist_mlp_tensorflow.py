@@ -9,7 +9,7 @@ from tensorflow.examples.tutorials.mnist import input_data
 mnist = input_data.read_data_sets("./mnist/data/", one_hot=True)
 
 shifting_value_W1 = 0.5
-shifting_value_W2 = 1
+shifting_value_W2 = 1.0
 
 #########
 # 신경망 모델 구성
@@ -43,16 +43,19 @@ with tf.name_scope("power_W1") as scope:
     shifting_value_tensor_W1 = tf.constant(shifting_value_W1, shape=[784,150])
     nonneg_W1 = tf.abs(tf.add(W1, shifting_value_tensor_W1))
     ref_sum_W1 = tf.reduce_sum(tf.matmul(X, ref_W1))
-    nonneg_sum_W1 = tf.add(tf.reduce_sum(tf.matmul(X, nonneg_W1)), tf.reduce_sum(tf.scalar_mul(0.5, X)))
+    nonneg_sum_W1 = tf.add(tf.reduce_sum(tf.matmul(X, nonneg_W1)), tf.reduce_sum(tf.scalar_mul(shifting_value_W1, X)))
     power_ratio_W1 = tf.divide(nonneg_sum_W1, ref_sum_W1)
 
-# with tf.name_scope("power_W2") as scope:
-#     ref_W2 = tf.abs(W2)
-#     shifting_value_tensor_W2 = tf.constant(shifting_value_W2, shape=[150,10])
-#     nonneg_W2 = tf.abs(tf.add(W1, shifting_value_tensor_W2))
-#     ref_sum_W2 = tf.reduce_sum(tf.matmul(X, ref_W2))
-#     nonneg_sum_W2 = tf.add(tf.reduce_sum(tf.matmul(X, nonneg_W2)), tf.reduce_sum(tf.scalar_mul(0.5, X)))
-#     power_ratio_W2 = tf.divide(nonneg_sum_W2, ref_sum_W2)
+with tf.name_scope("power_W2") as scope:
+    ref_W2 = tf.abs(W2)
+    shifting_value_tensor_W2 = tf.constant(shifting_value_W2, shape=[150,10])
+    nonneg_W2 = tf.abs(tf.add(W2, shifting_value_tensor_W2))
+    ref_sum_W2 = tf.reduce_sum(tf.matmul(L1, ref_W2))
+    nonneg_sum_W2 = tf.add(tf.reduce_sum(tf.matmul(L1, nonneg_W2)), tf.reduce_sum(tf.scalar_mul(shifting_value_W2, L1)))
+    power_ratio_W2 = tf.divide(nonneg_sum_W2, ref_sum_W2)
+
+
+
 
 with tf.name_scope("train") as scope:
     optimizer = tf.train.AdamOptimizer(0.001).minimize(cost)
@@ -95,8 +98,8 @@ print('최적화 완료!')
 is_correct = tf.equal(tf.argmax(model, 1), tf.argmax(Y, 1))
 accuracy = tf.reduce_mean(tf.cast(is_correct, tf.float32))
 
-accuracy_val, P_ratio = sess.run([accuracy, power_ratio_W1],
+accuracy_val, P_ratio_W1, P_ratio_W2 = sess.run([accuracy, power_ratio_W1, power_ratio_W2],
                         feed_dict={X: mnist.test.images,
                                    Y: mnist.test.labels})
 
-print('정확도:', accuracy_val, 'P_ratio : ', P_ratio)
+print('정확도:', accuracy_val, 'P_ratio_W1 : ', P_ratio_W1, 'P_ratio_W2 : ', P_ratio_W2)
