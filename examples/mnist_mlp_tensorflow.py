@@ -8,31 +8,18 @@ for root, dirs, files in os.walk(mypath):
 from tensorflow.examples.tutorials.mnist import input_data
 mnist = input_data.read_data_sets("./mnist/data/", one_hot=True)
 
-EPOCH = 10
+EPOCH = 30
 shifting_value_W1 = 0.5
 shifting_value_W2 = 1.0
+is_fitting_var = True
+fitting_var = 0.05
 
 #####################
 ## 신경망 모델 구성 ##
 #####################
 
-# with tf.name_scope("input") as scope:
-#     X = tf.placeholder(tf.float32, [None, 784])
-#
-# with tf.name_scope("y_") as scope:
-#     Y = tf.placeholder(tf.float32, [None, 10])
-#
-# with tf.name_scope("weight1") as scope:
-#     W1 = tf.Variable(tf.random_normal([784, 150], stddev=0.01))
-#
-# with tf.name_scope("layer1") as scope:
-#     L1 = tf.nn.relu(tf.matmul(X, W1))
-#
-# with tf.name_scope("weight2") as scope:
-#     W2 = tf.Variable(tf.random_normal([150, 10], stddev=0.01))
-#
-# with tf.name_scope("layer2") as scope:
-#     model = tf.matmul(L1, W2)
+# with tf.variable_scope("Constants"):
+
 
 with tf.variable_scope("Non_shifted"):
     X = tf.placeholder(tf.float32, [None, 784])
@@ -52,35 +39,34 @@ with tf.variable_scope("Shifted"):
 
     sum_X = tf.reduce_sum(X, 1, keepdims=True)
     Compensate_X = tf.ones([1,150])*sum_X
-    # Compensate_X = tf.transpose(tf.tile(sum_X, [150, 1]))
     shifted_H1 = tf.matmul(X, shifted_W1) - tf.scalar_mul(shifting_value_W1, Compensate_X)
     shifted_L1 = tf.nn.relu(shifted_H1)
 
     sum_L1 = tf.reduce_sum(shifted_L1, 1, keepdims=True)
     Compensate_L1 = tf.ones([1,10])*sum_L1
-    # Compensate_L1 = tf.transpose(tf.tile(sum_L1, [10, 1]))
     shifted_H2 = tf.matmul(shifted_L1, shifted_W2) - tf.scalar_mul(shifting_value_W2, Compensate_L1)
     shifted_model = shifted_H2
 
 with tf.name_scope("power_W1") as scope:
     ref_W1 = tf.abs(W1)
-    shifting_value_tensor_W1 = tf.constant(shifting_value_W1, shape=[784,150])
-    nonneg_W1 = tf.abs(tf.add(W1, shifting_value_tensor_W1))
     ref_sum_W1 = tf.reduce_sum(tf.matmul(X, ref_W1))
-    nonneg_sum_W1 = tf.add(tf.reduce_sum(tf.matmul(X, nonneg_W1)), tf.reduce_sum(tf.scalar_mul(shifting_value_W1, X)))
+
+    nonneg_sum_W1 = tf.add(tf.reduce_sum(tf.matmul(X, shifted_W1)),
+                           tf.reduce_sum(tf.scalar_mul(shifting_value_W1, X))) * 0.5
     power_ratio_W1 = tf.divide(nonneg_sum_W1, ref_sum_W1)
 
 with tf.name_scope("power_W2") as scope:
     ref_W2 = tf.abs(W2)
-    shifting_value_tensor_W2 = tf.constant(shifting_value_W2, shape=[150,10])
-    nonneg_W2 = tf.abs(tf.add(W2, shifting_value_tensor_W2))
     ref_sum_W2 = tf.reduce_sum(tf.matmul(L1, ref_W2))
-    nonneg_sum_W2 = tf.add(tf.reduce_sum(tf.matmul(L1, nonneg_W2)), tf.reduce_sum(tf.scalar_mul(shifting_value_W2, L1)))
+    nonneg_sum_W2 = tf.add(tf.reduce_sum(tf.matmul(shifted_L1, shifted_W2)),
+                           tf.reduce_sum(tf.scalar_mul(shifting_value_W2, shifted_L1))) * 0.5
     power_ratio_W2 = tf.divide(nonneg_sum_W2, ref_sum_W2)
 
 with tf.name_scope("tensor_board") as scope:
-    w1_hist = tf.summary.histogram("weight1", W1)
-    w2_hist = tf.summary.histogram("weight2", W2)
+    w1_hist = tf.summary.histogram("W1", W1)
+    w2_hist = tf.summary.histogram("W2", W2)
+    shifted_w1_hist = tf.summary.histogram("shifted_W1", shifted_W1)
+    shifted_w2_hist = tf.summary.histogram("shifted_W2", shifted_W2)
 
 with tf.name_scope("cost") as scope:
     cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=model, labels=Y))
