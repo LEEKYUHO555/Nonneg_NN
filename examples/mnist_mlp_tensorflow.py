@@ -1,4 +1,6 @@
 import tensorflow as tf
+import numpy as np
+import matplotlib.pyplot as plt
 import os, re, os.path
 mypath = "C:\\Users\\LEEKYUHO\\Desktop\\Code\\keras\\examples\\board\mnist"
 for root, dirs, files in os.walk(mypath):
@@ -8,7 +10,7 @@ for root, dirs, files in os.walk(mypath):
 from tensorflow.examples.tutorials.mnist import input_data
 mnist = input_data.read_data_sets("./mnist/data/", one_hot=True)
 
-EPOCH = 30
+EPOCH = 10
 shifting_value_W1 = 0.5
 shifting_value_W2 = 1.0
 is_fitting_var = True
@@ -18,8 +20,20 @@ fitting_var = 0.05
 ## 신경망 모델 구성 ##
 #####################
 
-# with tf.variable_scope("Constants"):
+# W1_var_ = np.random.uniform(low=-fitting_var, high=fitting_var, size=[784, 150])
+# W2_var_ = np.random.uniform(low=-fitting_var, high=fitting_var, size=[150, 10])
+# W1_var = np.ones([784, 150]) - W1_var_
+# W2_var = np.ones([150, 10]) - W2_var_
+#
+# plt.hist(W1_var)
+# plt.hist(W2_var)
+# plt.show()
 
+with tf.variable_scope("Constants"):
+    W1_var_ = tf.random.uniform([784, 150], minval=-fitting_var, maxval=fitting_var)
+    W2_var_ = tf.random.uniform([150, 10], minval=-fitting_var, maxval=fitting_var)
+    W1_var = tf.ones([784, 150]) - W1_var_
+    W2_var = tf.ones([150, 10]) - W2_var_
 
 with tf.variable_scope("Non_shifted"):
     X = tf.placeholder(tf.float32, [None, 784])
@@ -30,6 +44,12 @@ with tf.variable_scope("Non_shifted"):
     W2 = tf.get_variable("W2", shape=[150, 10], initializer=tf.contrib.layers.xavier_initializer(),
                          constraint=lambda x: tf.clip_by_value(x, -shifting_value_W2, shifting_value_W2))
     model = tf.matmul(L1, W2)
+
+    # for fitting variation configuration
+    var_W1 = tf.multiply(W1, W1_var)
+    var_L1 = tf.nn.relu(tf.matmul(X, var_W1))
+    var_W2 = tf.multiply(W2, W2_var)
+    var_model = tf.matmul(var_L1, var_W2)
 
 with tf.variable_scope("Shifted"):
     shifting_value_tensor_W1 = tf.constant(shifting_value_W1, shape=[784, 150])
@@ -46,6 +66,16 @@ with tf.variable_scope("Shifted"):
     Compensate_L1 = tf.ones([1,10])*sum_L1
     shifted_H2 = tf.matmul(shifted_L1, shifted_W2) - tf.scalar_mul(shifting_value_W2, Compensate_L1)
     shifted_model = shifted_H2
+
+    # for fitting variation configuration TODO : shifting values variation should be added
+    var_shifted_W1 = tf.multiply(shifted_W1, W1_var)
+    var_shifted_W2 = tf.multiply(shifted_W2, W2_var)
+    var_shifted_L1 = tf.nn.relu(tf.matmul(X, var_shifted_W1) - tf.scalar_mul(shifting_value_W1, Compensate_X))
+
+    sum_shifted_L1 = tf.reduce_sum(var_shifted_L1, 1, keepdims=True)
+    Compensate_shifted_L1 = tf.ones([1, 10]) * sum_shifted_L1
+    var_shifted_model = tf.matmul(var_shifted_L1, var_shifted_W2)\
+                        - tf.scalar_mul(shifting_value_W2, Compensate_shifted_L1)
 
 with tf.name_scope("power_W1") as scope:
     ref_W1 = tf.abs(W1)
@@ -109,13 +139,20 @@ print('최적화 완료!')
 #########
 # 결과 확인
 #########
+
 is_correct = tf.equal(tf.argmax(model, 1), tf.argmax(Y, 1))
-accuracy = tf.reduce_mean(tf.cast(is_correct, tf.float32))
-
 is_correct_shifted = tf.equal(tf.argmax(shifted_model, 1), tf.argmax(Y, 1))
+var_is_correct = tf.equal(tf.argmax(var_model, 1), tf.argmax(Y, 1))
+var_is_correct_shifted = tf.equal(tf.argmax(var_shifted_model, 1), tf.argmax(Y, 1))
+
+accuracy = tf.reduce_mean(tf.cast(is_correct, tf.float32))
+var_accuracy = tf.reduce_mean(tf.cast(var_is_correct, tf.float32))
 shifted_accuracy = tf.reduce_mean(tf.cast(is_correct_shifted, tf.float32))
+var_shifted_accuracy = tf.reduce_mean(tf.cast(var_is_correct_shifted, tf.float32))
 
-accuracy_val, shifted_accuracy_val, P_ratio_W1, P_ratio_W2 = sess.run(
-    [accuracy, shifted_accuracy, power_ratio_W1, power_ratio_W2], feed_dict={X: mnist.test.images, Y: mnist.test.labels})
+acc_val, shifted_acc_val, var_acc_val, var_shifted_acc_val, P_ratio_W1, P_ratio_W2 = sess.run(
+    [accuracy, shifted_accuracy, var_accuracy, var_shifted_accuracy, power_ratio_W1, power_ratio_W2],
+    feed_dict={X: mnist.test.images, Y: mnist.test.labels})
 
-print('Acc:', accuracy_val, 'Shifted_Acc:', shifted_accuracy_val, 'P_ratio_W1 : ', P_ratio_W1, 'P_ratio_W2 : ', P_ratio_W2)
+print('Acc:', acc_val, 'Shifted_Acc:', shifted_acc_val, 'var_Acc:', var_acc_val, 'var_Shifted_Acc:', var_shifted_acc_val,
+      'P_ratio_W1 : ', P_ratio_W1, 'P_ratio_W2 : ', P_ratio_W2)
