@@ -11,15 +11,10 @@ mnist = input_data.read_data_sets("./mnist/data/", one_hot=True)
 EPOCH = 30
 shifting_value_W1 = 0.5
 shifting_value_W2 = 1.0
-is_fitting_var = True
-fitting_var = 0.05
 
 #####################
 ## 신경망 모델 구성 ##
 #####################
-
-# with tf.variable_scope("Constants"):
-
 
 with tf.variable_scope("Non_shifted"):
     X = tf.placeholder(tf.float32, [None, 784])
