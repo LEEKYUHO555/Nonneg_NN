@@ -20,15 +20,6 @@ fitting_var = 0.05
 ## 신경망 모델 구성 ##
 #####################
 
-# W1_var_ = np.random.uniform(low=-fitting_var, high=fitting_var, size=[784, 150])
-# W2_var_ = np.random.uniform(low=-fitting_var, high=fitting_var, size=[150, 10])
-# W1_var = np.ones([784, 150]) - W1_var_
-# W2_var = np.ones([150, 10]) - W2_var_
-#
-# plt.hist(W1_var)
-# plt.hist(W2_var)
-# plt.show()
-
 with tf.variable_scope("Constants"):
     W1_var_ = tf.random.uniform([784, 150], minval=-fitting_var, maxval=fitting_var)
     W2_var_ = tf.random.uniform([150, 10], minval=-fitting_var, maxval=fitting_var)
