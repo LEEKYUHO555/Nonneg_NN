@@ -11,10 +11,29 @@ mnist = input_data.read_data_sets("./mnist/data/", one_hot=True)
 EPOCH = 30
 shifting_value_W1 = 0.5
 shifting_value_W2 = 1.0
+Q_factor = 64
 
 #####################
 ## 신경망 모델 구성 ##
 #####################
+
+def shift_quantize(Weight, Q_val, maximum):         # Quantizing Func for shifted matrix
+    Q_Weight = tf.scalar_mul(1/maximum, Weight)
+    Q_Weight = tf.scalar_mul(Q_val, Q_Weight)
+    Q_Weight = tf.floor(Q_Weight)
+    Q_Weight = tf.scalar_mul(1/Q_val, Q_Weight)
+    Q_Weight = tf.scalar_mul(maximum, Q_Weight)
+    return Q_Weight
+
+def quantize(Weight, Q_val, maximum):               # Quantizing Func for un-shifted matrix
+    sign_Weight = tf.sign(Weight)
+    Q_Weight = tf.scalar_mul(1 / maximum, Weight)
+    Q_Weight = tf.scalar_mul(Q_val, Q_Weight)
+    Q_Weight = tf.floor(Q_Weight)
+    Q_Weight = tf.scalar_mul(1/Q_val, Q_Weight)
+    Q_Weight = tf.scalar_mul(maximum, Q_Weight)
+    Q_Weight = tf.multiply(sign_Weight, Q_Weight)
+    return Q_Weight
 
 with tf.variable_scope("Non_shifted"):
     X = tf.placeholder(tf.float32, [None, 784])
@@ -25,6 +44,12 @@ with tf.variable_scope("Non_shifted"):
     W2 = tf.get_variable("W2", shape=[150, 10], initializer=tf.contrib.layers.xavier_initializer(),
                          constraint=lambda x: tf.clip_by_value(x, -shifting_value_W2, shifting_value_W2))
     model = tf.matmul(L1, W2)
+
+    # for quantizing
+    Q_W1 = quantize(W1, Q_factor, shifting_value_W1)
+    Q_W2 = quantize(W2, Q_factor, shifting_value_W2)
+    Q_L1 = tf.nn.relu(tf.matmul(X, Q_W1))
+    Q_model = tf.matmul(Q_L1, Q_W2)
 
 with tf.variable_scope("Shifted"):
     shifting_value_tensor_W1 = tf.constant(shifting_value_W1, shape=[784, 150])
@@ -41,6 +66,18 @@ with tf.variable_scope("Shifted"):
     Compensate_L1 = tf.ones([1,10])*sum_L1
     shifted_H2 = tf.matmul(shifted_L1, shifted_W2) - tf.scalar_mul(shifting_value_W2, Compensate_L1)
     shifted_model = shifted_H2
+
+    # for quantizing
+    Q_shifted_W1 = shift_quantize(shifted_W1, Q_factor, 2 * shifting_value_W1)
+    Q_shifted_W2 = shift_quantize(shifted_W2, Q_factor, 2 * shifting_value_W2)
+    Q_shifted_H1 = tf.matmul(X, Q_shifted_W1) - tf.scalar_mul(shifting_value_W1, Compensate_X)
+    Q_shifted_L1 = tf.nn.relu(Q_shifted_H1)
+
+    Q_sum_L1 = tf.reduce_sum(Q_shifted_L1, 1, keepdims=True)
+    Q_Compensate_L1 = tf.ones([1, 10]) * Q_sum_L1
+    Q_shifted_H2 = tf.matmul(Q_shifted_L1, Q_shifted_W2) - tf.scalar_mul(shifting_value_W2, Q_Compensate_L1)
+    Q_shifted_model = Q_shifted_H2
+
 
 with tf.name_scope("power_W1") as scope:
     ref_W1 = tf.abs(W1)
@@ -110,7 +147,15 @@ accuracy = tf.reduce_mean(tf.cast(is_correct, tf.float32))
 is_correct_shifted = tf.equal(tf.argmax(shifted_model, 1), tf.argmax(Y, 1))
 shifted_accuracy = tf.reduce_mean(tf.cast(is_correct_shifted, tf.float32))
 
-accuracy_val, shifted_accuracy_val, P_ratio_W1, P_ratio_W2 = sess.run(
-    [accuracy, shifted_accuracy, power_ratio_W1, power_ratio_W2], feed_dict={X: mnist.test.images, Y: mnist.test.labels})
+Q_is_correct = tf.equal(tf.argmax(Q_model, 1), tf.argmax(Y, 1))
+Q_accuracy = tf.reduce_mean(tf.cast(Q_is_correct, tf.float32))
 
-print('Acc:', accuracy_val, 'Shifted_Acc:', shifted_accuracy_val, 'P_ratio_W1 : ', P_ratio_W1, 'P_ratio_W2 : ', P_ratio_W2)
+Q_is_correct_shifted = tf.equal(tf.argmax(Q_shifted_model, 1), tf.argmax(Y, 1))
+Q_shifted_accuracy = tf.reduce_mean(tf.cast(Q_is_correct_shifted, tf.float32))
+
+accuracy_val, shifted_accuracy_val, Q_accuracy_val, Q_shifted_accuracy_val, P_ratio_W1, P_ratio_W2 = sess.run(
+    [accuracy, shifted_accuracy, Q_accuracy, Q_shifted_accuracy, power_ratio_W1, power_ratio_W2],
+    feed_dict={X: mnist.test.images, Y: mnist.test.labels})
+
+print('Acc:', accuracy_val, 'Shifted_Acc:', shifted_accuracy_val, 'Q_Acc:', Q_accuracy_val,
+      'Q_Shifted_Acc:', Q_shifted_accuracy_val, 'P_ratio_W1 : ', P_ratio_W1, 'P_ratio_W2 : ', P_ratio_W2)

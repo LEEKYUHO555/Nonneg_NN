@@ -13,6 +13,7 @@ docs/theme/img/*
 tags
 Keras.egg-info
 examples/img/*
+examples/board/mnist/*
 
 # test-related
 .coverage
