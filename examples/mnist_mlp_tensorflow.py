@@ -11,7 +11,7 @@ mnist = input_data.read_data_sets("./mnist/data/", one_hot=True)
 EPOCH = 30
 shifting_value_W1 = 0.5
 shifting_value_W2 = 1.0
-Q_factor = 64
+Q_factor = 32
 
 #####################
 ## 신경망 모델 구성 ##
@@ -27,7 +27,8 @@ def shift_quantize(Weight, Q_val, maximum):         # Quantizing Func for shifte
 
 def quantize(Weight, Q_val, maximum):               # Quantizing Func for un-shifted matrix
     sign_Weight = tf.sign(Weight)
-    Q_Weight = tf.scalar_mul(1 / maximum, Weight)
+    Q_Weight = tf.abs(Weight)
+    Q_Weight = tf.scalar_mul(1 / maximum, Q_Weight)
     Q_Weight = tf.scalar_mul(Q_val, Q_Weight)
     Q_Weight = tf.floor(Q_Weight)
     Q_Weight = tf.scalar_mul(1/Q_val, Q_Weight)
