@@ -2,7 +2,7 @@ import tensorflow as tf
 import numpy as np
 import matplotlib.pyplot as plt
 import os, re, os.path
-mypath = "C:\\Users\\LEEKYUHO\\Desktop\\Code\\keras\\examples\\board\mnist"
+mypath = "C:\\Users\\LEEKYUHO\\Desktop\\Code\\keras\\examples\\board\\mnist"
 for root, dirs, files in os.walk(mypath):
     for file in files:
         os.remove(os.path.join(root, file))
@@ -10,10 +10,13 @@ for root, dirs, files in os.walk(mypath):
 from tensorflow.examples.tutorials.mnist import input_data
 mnist = input_data.read_data_sets("./mnist/data/", one_hot=True)
 
-EPOCH = 10
+EPOCH = 50
 shifting_value_W1 = 0.5
 shifting_value_W2 = 1.0
-is_fitting_var = True
+is_mul_var = False
+is_add_var = ~is_mul_var
+two_sigma = 0.3                    # 1 sigma는 68%, 2 sigma 가 95%. 68-95-99.7
+
 fitting_var = 0.05
 
 #####################
@@ -21,10 +24,12 @@ fitting_var = 0.05
 #####################
 
 with tf.variable_scope("Constants"):
-    W1_var_ = tf.random.uniform([784, 150], minval=-fitting_var, maxval=fitting_var)
-    W2_var_ = tf.random.uniform([150, 10], minval=-fitting_var, maxval=fitting_var)
-    W1_var = tf.ones([784, 150]) - W1_var_
-    W2_var = tf.ones([150, 10]) - W2_var_
+    W1_mul_var = tf.random.normal([784, 150], mean=1, stddev=0.5 * two_sigma)
+    W2_mul_var = tf.random.normal([150, 10], mean=1, stddev=0.5 * two_sigma)
+    W1_add_var = tf.random.normal([784, 150], mean=0, stddev=0.5 * two_sigma * shifting_value_W1)
+    W2_add_var = tf.random.normal([150, 10], mean=0, stddev=0.5 * two_sigma * shifting_value_W2)
+    shifted_W1_add_var = tf.random.normal([784, 150], mean=0, stddev=0.5 * two_sigma * shifting_value_W1 * 2)
+    shifted_W2_add_var = tf.random.normal([150, 10], mean=0, stddev=0.5 * two_sigma * shifting_value_W2 * 2)
 
 with tf.variable_scope("Non_shifted"):
     X = tf.placeholder(tf.float32, [None, 784])
@@ -37,10 +42,16 @@ with tf.variable_scope("Non_shifted"):
     model = tf.matmul(L1, W2)
 
     # for fitting variation configuration
-    var_W1 = tf.multiply(W1, W1_var)
-    var_L1 = tf.nn.relu(tf.matmul(X, var_W1))
-    var_W2 = tf.multiply(W2, W2_var)
-    var_model = tf.matmul(var_L1, var_W2)
+    if is_mul_var:
+        var_W1 = tf.multiply(W1, W1_mul_var)
+        var_L1 = tf.nn.relu(tf.matmul(X, var_W1))
+        var_W2 = tf.multiply(W2, W2_mul_var)
+        var_model = tf.matmul(var_L1, var_W2)
+    else:
+        var_W1 = W1 + W1_add_var
+        var_L1 = tf.nn.relu(tf.matmul(X, var_W1))
+        var_W2 = W2 + W2_mul_var
+        var_model = tf.matmul(var_L1, var_W2)
 
 with tf.variable_scope("Shifted"):
     shifting_value_tensor_W1 = tf.constant(shifting_value_W1, shape=[784, 150])
@@ -59,14 +70,24 @@ with tf.variable_scope("Shifted"):
     shifted_model = shifted_H2
 
     # for fitting variation configuration TODO : shifting values variation should be added
-    var_shifted_W1 = tf.multiply(shifted_W1, W1_var)
-    var_shifted_W2 = tf.multiply(shifted_W2, W2_var)
-    var_shifted_L1 = tf.nn.relu(tf.matmul(X, var_shifted_W1) - tf.scalar_mul(shifting_value_W1, Compensate_X))
+    if is_mul_var:
+        var_shifted_W1 = tf.multiply(shifted_W1, W1_mul_var)
+        var_shifted_W2 = tf.multiply(shifted_W2, W2_mul_var)
+        var_shifted_L1 = tf.nn.relu(tf.matmul(X, var_shifted_W1) - tf.scalar_mul(shifting_value_W1, Compensate_X))
 
-    sum_shifted_L1 = tf.reduce_sum(var_shifted_L1, 1, keepdims=True)
-    Compensate_shifted_L1 = tf.ones([1, 10]) * sum_shifted_L1
-    var_shifted_model = tf.matmul(var_shifted_L1, var_shifted_W2)\
-                        - tf.scalar_mul(shifting_value_W2, Compensate_shifted_L1)
+        sum_shifted_L1 = tf.reduce_sum(var_shifted_L1, 1, keepdims=True)
+        Compensate_shifted_L1 = tf.ones([1, 10]) * sum_shifted_L1
+        var_shifted_model = tf.matmul(var_shifted_L1, var_shifted_W2)\
+                            - tf.scalar_mul(shifting_value_W2, Compensate_shifted_L1)
+    else:
+        var_shifted_W1 = shifted_W1 + shifted_W1_add_var
+        var_shifted_W2 = shifted_W2 + shifted_W2_add_var
+        var_shifted_L1 = tf.nn.relu(tf.matmul(X, var_shifted_W1) - tf.scalar_mul(shifting_value_W1, Compensate_X))
+
+        sum_shifted_L1 = tf.reduce_sum(var_shifted_L1, 1, keepdims=True)
+        Compensate_shifted_L1 = tf.ones([1, 10]) * sum_shifted_L1
+        var_shifted_model = tf.matmul(var_shifted_L1, var_shifted_W2) \
+                            - tf.scalar_mul(shifting_value_W2, Compensate_shifted_L1)
 
 with tf.name_scope("power_W1") as scope:
     ref_W1 = tf.abs(W1)
