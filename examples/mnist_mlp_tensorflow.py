@@ -1,6 +1,7 @@
 import tensorflow as tf
+import numpy as np
 import os, re, os.path
-mypath = "C:\\Users\\LEEKYUHO\\Desktop\\Code\\keras\\examples\\board\mnist"
+mypath = "C:\\Users\\LEEKYUHO\\Desktop\\Code\\keras\\examples\\board\\mnist"
 for root, dirs, files in os.walk(mypath):
     for file in files:
         os.remove(os.path.join(root, file))
@@ -8,10 +9,10 @@ for root, dirs, files in os.walk(mypath):
 from tensorflow.examples.tutorials.mnist import input_data
 mnist = input_data.read_data_sets("./mnist/data/", one_hot=True)
 
-EPOCH = 30
+EPOCH = 50
 shifting_value_W1 = 0.5
 shifting_value_W2 = 1.0
-Q_factor = 32
+Q_factor = 8
 
 #####################
 ## 신경망 모델 구성 ##
@@ -20,7 +21,7 @@ Q_factor = 32
 def shift_quantize(Weight, Q_val, maximum):         # Quantizing Func for shifted matrix
     Q_Weight = tf.scalar_mul(1/maximum, Weight)
     Q_Weight = tf.scalar_mul(Q_val, Q_Weight)
-    Q_Weight = tf.floor(Q_Weight)
+    Q_Weight = tf.round(Q_Weight)
     Q_Weight = tf.scalar_mul(1/Q_val, Q_Weight)
     Q_Weight = tf.scalar_mul(maximum, Q_Weight)
     return Q_Weight
@@ -30,7 +31,7 @@ def quantize(Weight, Q_val, maximum):               # Quantizing Func for un-shi
     Q_Weight = tf.abs(Weight)
     Q_Weight = tf.scalar_mul(1 / maximum, Q_Weight)
     Q_Weight = tf.scalar_mul(Q_val, Q_Weight)
-    Q_Weight = tf.floor(Q_Weight)
+    Q_Weight = tf.round(Q_Weight)
     Q_Weight = tf.scalar_mul(1/Q_val, Q_Weight)
     Q_Weight = tf.scalar_mul(maximum, Q_Weight)
     Q_Weight = tf.multiply(sign_Weight, Q_Weight)
@@ -47,8 +48,8 @@ with tf.variable_scope("Non_shifted"):
     model = tf.matmul(L1, W2)
 
     # for quantizing
-    Q_W1 = quantize(W1, Q_factor, shifting_value_W1)
-    Q_W2 = quantize(W2, Q_factor, shifting_value_W2)
+    Q_W1 = quantize(W1, Q_factor - 1, shifting_value_W1)
+    Q_W2 = quantize(W2, Q_factor - 1, shifting_value_W2)
     Q_L1 = tf.nn.relu(tf.matmul(X, Q_W1))
     Q_model = tf.matmul(Q_L1, Q_W2)
 
@@ -69,8 +70,8 @@ with tf.variable_scope("Shifted"):
     shifted_model = shifted_H2
 
     # for quantizing
-    Q_shifted_W1 = shift_quantize(shifted_W1, Q_factor, 2 * shifting_value_W1)
-    Q_shifted_W2 = shift_quantize(shifted_W2, Q_factor, 2 * shifting_value_W2)
+    Q_shifted_W1 = shift_quantize(shifted_W1, Q_factor - 1, 2 * shifting_value_W1)
+    Q_shifted_W2 = shift_quantize(shifted_W2, Q_factor - 1, 2 * shifting_value_W2)
     Q_shifted_H1 = tf.matmul(X, Q_shifted_W1) - tf.scalar_mul(shifting_value_W1, Compensate_X)
     Q_shifted_L1 = tf.nn.relu(Q_shifted_H1)
 
@@ -100,6 +101,10 @@ with tf.name_scope("tensor_board") as scope:
     w2_hist = tf.summary.histogram("W2", W2)
     shifted_w1_hist = tf.summary.histogram("shifted_W1", shifted_W1)
     shifted_w2_hist = tf.summary.histogram("shifted_W2", shifted_W2)
+    Q_w1_hist = tf.summary.histogram("Q_W1", Q_W1)
+    Q_w2_hist = tf.summary.histogram("Q_W2", Q_W2)
+    Q_shifted_w1_hist = tf.summary.histogram("Q_shifted_W1", Q_shifted_W1)
+    Q_shifted_w2_hist = tf.summary.histogram("Q_shifted_W2", Q_shifted_W2)
 
 with tf.name_scope("cost") as scope:
     cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=model, labels=Y))
@@ -142,6 +147,9 @@ print('최적화 완료!')
 #########
 # 결과 확인
 #########
+# Q_weight_W1 = Q_shifted_W1.eval(session=sess)
+# np.savetxt(mypath + '_W1.csv', Q_weight_W1)
+
 is_correct = tf.equal(tf.argmax(model, 1), tf.argmax(Y, 1))
 accuracy = tf.reduce_mean(tf.cast(is_correct, tf.float32))
 
